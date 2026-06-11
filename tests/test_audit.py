@@ -43,6 +43,33 @@ steps:
 
         self.assertEqual(set(occurrences), {"actions/checkout", "actions/setup-python"})
 
+    def test_scans_single_and_double_quoted_action_references(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflows = Path(temp_dir)
+            (workflows / "quoted.yml").write_text(
+                """
+steps:
+  - uses: "actions/checkout@v4" # v4
+  - uses: 'actions/setup-python@v5'
+""".lstrip()
+            )
+
+            occurrences = audit.scan_workflows(workflows, ())
+
+        self.assertEqual(occurrences["actions/checkout"][0][1:], ("v4", "v4"))
+        self.assertEqual(occurrences["actions/setup-python"][0][1], "v5")
+
+    def test_does_not_scan_mismatched_quotes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflows = Path(temp_dir)
+            (workflows / "invalid.yml").write_text(
+                '- uses: "actions/checkout@v4\'\n'
+            )
+
+            occurrences = audit.scan_workflows(workflows, ())
+
+        self.assertEqual(occurrences, {})
+
 
 class GitHubApiTests(unittest.TestCase):
     @mock.patch.object(audit, "gh_get")

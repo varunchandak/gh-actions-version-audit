@@ -29,9 +29,12 @@ from pathlib import Path
 GITHUB_API = "https://api.github.com"
 USES_RE = re.compile(
     r"""^\s*-?\s*uses:\s+
-        (?P<full>[^/\s@]+/[^@\s]+)
-        @(?P<ref>\S+)
+        (?P<quote>["']?)
+        (?P<full>[^/\s@'"]+/[^@\s'"]+)
+        @(?P<ref>[^\s#'"]+)
+        (?P=quote)
         (?:\s*\#\s*(?P<comment>\S+))?
+        \s*$
     """,
     re.VERBOSE,
 )
