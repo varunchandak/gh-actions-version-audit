@@ -1,0 +1,35 @@
+name: 'GitHub Actions Version Audit'
+description: 'Audit GitHub Actions references for version drift and insecure tag pinning.'
+author: 'Varun Chandak'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  github_token:
+    description: 'GitHub Token used to query public release metadata.'
+    required: true
+    default: ${{ github.token }}
+  slack_webhook_url:
+    description: 'Slack incoming webhook URL for notifications.'
+    required: false
+  workflows_dir:
+    description: 'The directory to scan for workflow YAML files.'
+    required: false
+    default: '.github/workflows'
+  skip_prefixes:
+    description: 'Comma-separated prefixes of "uses:" strings to ignore (e.g., internal actions).'
+    required: false
+    default: './'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Version Audit
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
+        WORKFLOWS_DIR: ${{ inputs.workflows_dir }}
+        SKIP_PREFIXES: ${{ inputs.skip_prefixes }}
+      run: python3 ${{ github.action_path }}/github-actions-version-audit.py
