@@ -2,6 +2,18 @@
 
 This action scans your repository's workflows for `uses:` references, checks the GitHub API for each action's latest release, and reports version drift or insecure tag pinning (e.g., pinning to `v1` instead of a commit SHA).
 
+## Why Pin to a Commit SHA?
+
+GitHub Actions run with access to your repository, secrets, and often your cloud environments. Pinning an action to a mutable tag like `@v4` means you're trusting that the tag won't be silently moved — but tags can be overwritten by the action author or by an attacker who compromises their account. This is a well-documented **supply chain attack vector**.
+
+Pinning to a **full-length commit SHA** (e.g. `@df4cb1c...`) is immutable — it always resolves to exactly the same code, regardless of what happens upstream.
+
+**Real-world incidents:**
+- **tj-actions/changed-files** (March 2025): a compromised action was used to exfiltrate CI secrets from thousands of repositories.
+- **reviewdog/action-setup** (same campaign): the tag was silently moved to point to malicious code.
+
+This action helps you detect and remediate both problems: outdated pins and mutable tag references.
+
 ## Features
 
 - **Drift Detection:** Identifies when a pinned SHA is no longer the latest release.
