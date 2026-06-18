@@ -29,8 +29,8 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: varunchandak/gh-actions-version-audit@v1
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: varunchandak/gh-actions-version-audit@63bffd07c344e008a1030f01f0a176544b1525fe # v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
