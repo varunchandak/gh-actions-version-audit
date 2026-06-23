@@ -118,6 +118,52 @@ steps:
             )
 
 
+class PullRequestTests(unittest.TestCase):
+    @mock.patch.dict(audit.os.environ, {"GIT_PUSH_TOKEN": "app-token"})
+    @mock.patch.object(audit, "gh_patch")
+    @mock.patch.object(audit, "gh_post")
+    @mock.patch.object(audit, "gh_get")
+    def test_uses_app_token_for_pr_lookup_and_creation(self, gh_get, gh_post, gh_patch):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow = Path(temp_dir) / ".github" / "workflows" / "audit.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text("- uses: actions/checkout@%s # v7.0.0\n" % ("a" * 40))
+
+            gh_get.side_effect = [
+                {"object": {"sha": "base-sha"}},
+                None,
+                [],
+            ]
+            gh_post.side_effect = [
+                {},
+                {"data": {"createCommitOnBranch": {"commit": {"oid": "commit-sha"}}}},
+                {"html_url": "https://github.com/owner/repo/pull/1"},
+            ]
+
+            with mock.patch.object(audit.Path, "cwd", return_value=Path(temp_dir)):
+                pr_url = audit.create_pull_request(
+                    "github-token",
+                    "owner/repo",
+                    "audit-branch",
+                    "main",
+                    [
+                        {
+                            "action": "actions/checkout",
+                            "current_display": "v4",
+                            "latest_tag": "v7.0.0",
+                            "latest_sha": "a" * 40,
+                        }
+                    ],
+                    None,
+                    [workflow],
+                )
+
+        self.assertEqual(pr_url, "https://github.com/owner/repo/pull/1")
+        self.assertEqual(gh_patch.call_count, 0)
+        self.assertEqual([call.args[1] for call in gh_get.call_args_list], ["app-token"] * 3)
+        self.assertEqual([call.args[1] for call in gh_post.call_args_list], ["app-token"] * 3)
+
+
 class ReportTests(unittest.TestCase):
     def test_markdown_summary_contains_finding(self):
         findings = [
