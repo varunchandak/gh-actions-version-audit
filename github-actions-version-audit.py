@@ -83,8 +83,12 @@ def gh_post(path: str, token: str, body: dict) -> dict:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        details = e.read().decode()
+        raise RuntimeError(f"GitHub POST {path} failed: {e.code} {e.reason}: {details}") from e
 
 
 def gh_patch(path: str, token: str, body: dict) -> dict:
@@ -100,8 +104,12 @@ def gh_patch(path: str, token: str, body: dict) -> dict:
         },
         method="PATCH",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        details = e.read().decode()
+        raise RuntimeError(f"GitHub PATCH {path} failed: {e.code} {e.reason}: {details}") from e
 
 
 def resolve_tag_sha(owner_repo: str, tag: str, token: str) -> str | None:
@@ -182,6 +190,7 @@ def create_pull_request(
 
     owner, repo_name = repo.split("/", 1)
     push_token = os.environ.get("GIT_PUSH_TOKEN") or token
+    pr_token = push_token
 
     base_ref = gh_get(f"/repos/{owner}/{repo_name}/git/refs/heads/{base_branch}", push_token)
     if not base_ref:
@@ -252,7 +261,7 @@ def create_pull_request(
 
     existing_prs = gh_get(
         f"/repos/{owner}/{repo_name}/pulls?head={owner}:{head_branch}&base={base_branch}&state=open",
-        token,
+        pr_token,
     )
     if isinstance(existing_prs, list) and existing_prs:
         pr = existing_prs[0]
@@ -276,7 +285,7 @@ def create_pull_request(
 
     resp = gh_post(
         f"/repos/{owner}/{repo_name}/pulls",
-        token,
+        pr_token,
         {
             "title": "Bump pinned GitHub Actions to latest SHAs",
             "body": "\n".join(lines),
