@@ -85,6 +85,39 @@ class GitHubApiTests(unittest.TestCase):
         self.assertEqual(gh_get.call_count, 2)
 
 
+class PatchWorkflowTests(unittest.TestCase):
+    def test_patches_unquoted_and_quoted_uses_lines(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflows = Path(temp_dir)
+            workflow = workflows / "audit.yml"
+            workflow.write_text(
+                """
+steps:
+  - uses: actions/checkout@v4
+  - uses: "actions/checkout@abc123" # old
+  - uses: 'actions/setup-python@v5'
+""".lstrip()
+            )
+
+            patched = audit.patch_workflow_files(
+                "actions/checkout",
+                "a" * 40,
+                "v6.0.3",
+                [workflow],
+            )
+
+            self.assertEqual(patched, [workflow])
+            self.assertEqual(
+                workflow.read_text(),
+                f"""
+steps:
+  - uses: actions/checkout@{"a" * 40} # v6.0.3
+  - uses: "actions/checkout@{"a" * 40}" # v6.0.3
+  - uses: 'actions/setup-python@v5'
+""".lstrip(),
+            )
+
+
 class ReportTests(unittest.TestCase):
     def test_markdown_summary_contains_finding(self):
         findings = [

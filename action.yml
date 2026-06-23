@@ -21,6 +21,21 @@ inputs:
     description: 'Comma-separated prefixes of "uses:" strings to ignore (e.g., internal actions).'
     required: false
     default: './'
+  create_pr:
+    description: 'Whether to patch workflow files and open a pull request for findings.'
+    required: false
+    default: 'false'
+  git_push_token:
+    description: 'GitHub App or PAT token with contents:write and workflows permission, used to commit workflow file updates.'
+    required: false
+  pr_branch:
+    description: 'Branch name to create or update when create_pr is true.'
+    required: false
+    default: 'github-actions-version-audit'
+  pr_base:
+    description: 'Base branch for pull requests when create_pr is true.'
+    required: false
+    default: 'main'
 
 runs:
   using: 'composite'
@@ -32,4 +47,8 @@ runs:
         SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
         WORKFLOWS_DIR: ${{ inputs.workflows_dir }}
         SKIP_PREFIXES: ${{ inputs.skip_prefixes }}
+        CREATE_PR: ${{ inputs.create_pr }}
+        GIT_PUSH_TOKEN: ${{ inputs.git_push_token }}
+        PR_BRANCH: ${{ inputs.pr_branch }}
+        PR_BASE: ${{ inputs.pr_base }}
       run: python3 ${{ github.action_path }}/github-actions-version-audit.py
