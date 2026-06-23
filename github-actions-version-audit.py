@@ -67,7 +67,8 @@ def gh_get(path: str, token: str) -> dict | list | None:
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None
-        raise
+        details = e.read().decode()
+        raise RuntimeError(f"GitHub GET {path} failed: {e.code} {e.reason}: {details}") from e
 
 
 def gh_post(path: str, token: str, body: dict) -> dict:
@@ -190,7 +191,9 @@ def create_pull_request(
 
     owner, repo_name = repo.split("/", 1)
     push_token = os.environ.get("GIT_PUSH_TOKEN") or token
-    pr_token = push_token
+    pr_tokens = [push_token]
+    if token != push_token:
+        pr_tokens.append(token)
 
     base_ref = gh_get(f"/repos/{owner}/{repo_name}/git/refs/heads/{base_branch}", push_token)
     if not base_ref:
@@ -259,10 +262,7 @@ def create_pull_request(
     commit_sha = result["data"]["createCommitOnBranch"]["commit"]["oid"]
     print(f"  Commit: {commit_sha[:7]}")
 
-    existing_prs = gh_get(
-        f"/repos/{owner}/{repo_name}/pulls?head={owner}:{head_branch}&base={base_branch}&state=open",
-        pr_token,
-    )
+    existing_prs = _get_existing_pull_requests(owner, repo_name, head_branch, base_branch, pr_tokens)
     if isinstance(existing_prs, list) and existing_prs:
         pr = existing_prs[0]
         print(f"  Existing open PR found: {pr['html_url']} - reusing it.")
@@ -283,9 +283,10 @@ def create_pull_request(
     if run_url:
         lines.extend(["", f"[View audit run]({run_url})"])
 
-    resp = gh_post(
-        f"/repos/{owner}/{repo_name}/pulls",
-        pr_token,
+    resp = _create_pull_request_with_fallback(
+        owner,
+        repo_name,
+        pr_tokens,
         {
             "title": "Bump pinned GitHub Actions to latest SHAs",
             "body": "\n".join(lines),
@@ -294,6 +295,45 @@ def create_pull_request(
         },
     )
     return resp.get("html_url", "")
+
+
+def _get_existing_pull_requests(
+    owner: str,
+    repo_name: str,
+    head_branch: str,
+    base_branch: str,
+    tokens: list[str],
+) -> list:
+    path = f"/repos/{owner}/{repo_name}/pulls?head={owner}:{head_branch}&base={base_branch}&state=open"
+    errors: list[str] = []
+    for index, token in enumerate(tokens):
+        try:
+            prs = gh_get(path, token)
+            return prs if isinstance(prs, list) else []
+        except RuntimeError as exc:
+            label = "primary" if index == 0 else "fallback"
+            errors.append(f"{label} token: {exc}")
+            print(f"  PR lookup with {label} token failed; trying next token.", file=sys.stderr)
+    raise RuntimeError("PR lookup failed with all available tokens:\n" + "\n".join(errors))
+
+
+def _create_pull_request_with_fallback(
+    owner: str,
+    repo_name: str,
+    tokens: list[str],
+    body: dict,
+) -> dict:
+    path = f"/repos/{owner}/{repo_name}/pulls"
+    errors: list[str] = []
+    for index, token in enumerate(tokens):
+        try:
+            return gh_post(path, token, body)
+        except RuntimeError as exc:
+            label = "primary" if index == 0 else "fallback"
+            errors.append(f"{label} token: {exc}")
+            if index < len(tokens) - 1:
+                print(f"  PR creation with {label} token failed; trying next token.", file=sys.stderr)
+    raise RuntimeError("PR creation failed with all available tokens:\n" + "\n".join(errors))
 
 
 def build_slack_payload(findings: list[dict], repo: str, run_url: str | None, pr_url: str | None = None) -> dict:
