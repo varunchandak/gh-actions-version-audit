@@ -59,6 +59,12 @@ Because these changes modify files under `.github/workflows`, the token that com
 - `workflows: write`
 - `pull-requests: write`
 
+If the action needs to fall back to `GITHUB_TOKEN` for PR creation, the target repository must allow workflows to create pull requests:
+
+1. Go to **Settings** → **Actions** → **General**.
+2. Under **Workflow permissions**, choose **Read and write permissions**.
+3. Enable **Allow GitHub Actions to create and approve pull requests**.
+
 Example using `actions/create-github-app-token`:
 
 ```yaml
@@ -96,7 +102,7 @@ jobs:
           pr_base: main
 ```
 
-The audit token (`github_token`) is still used for release lookups and PR creation. The push token (`git_push_token`) is used for the commit that updates workflow files.
+The audit token (`github_token`) is used for release lookups and as a fallback for PR creation. The push token (`git_push_token`) is used for the commit that updates workflow files and is tried first for PR lookup and creation.
 
 ## Inputs
 
@@ -107,7 +113,7 @@ The audit token (`github_token`) is still used for release lookups and PR creati
 | `workflows_dir` | Optional. The directory to scan for workflow files. | `.github/workflows` |
 | `skip_prefixes` | Optional. Comma-separated prefixes to ignore (e.g., `./` for local actions). | `./` |
 | `create_pr` | Optional. Set to `true` to patch findings and open a pull request. | `false` |
-| `git_push_token` | Optional unless `create_pr` is enabled. GitHub App or PAT token used to commit workflow file updates. | — |
+| `git_push_token` | Optional unless `create_pr` is enabled. GitHub App or PAT token used to commit workflow file updates and attempted first for PR creation. | — |
 | `pr_branch` | Optional. Branch to create or update for automated PRs. | `github-actions-version-audit` |
 | `pr_base` | Optional. Base branch for automated PRs. | `main` |
 
