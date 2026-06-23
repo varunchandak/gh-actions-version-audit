@@ -163,6 +163,43 @@ class PullRequestTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in gh_get.call_args_list], ["app-token"] * 3)
         self.assertEqual([call.args[1] for call in gh_post.call_args_list], ["app-token"] * 3)
 
+    @mock.patch.object(audit, "gh_post")
+    @mock.patch.object(audit, "gh_get")
+    def test_pr_lookup_falls_back_to_github_token(self, gh_get, gh_post):
+        gh_get.side_effect = [
+            RuntimeError("primary failed"),
+            [],
+        ]
+        gh_post.return_value = {"html_url": "https://github.com/owner/repo/pull/1"}
+
+        prs = audit._get_existing_pull_requests(
+            "owner",
+            "repo",
+            "audit-branch",
+            "main",
+            ["app-token", "github-token"],
+        )
+
+        self.assertEqual(prs, [])
+        self.assertEqual([call.args[1] for call in gh_get.call_args_list], ["app-token", "github-token"])
+
+    @mock.patch.object(audit, "gh_post")
+    def test_pr_creation_falls_back_to_github_token(self, gh_post):
+        gh_post.side_effect = [
+            RuntimeError("primary failed"),
+            {"html_url": "https://github.com/owner/repo/pull/1"},
+        ]
+
+        pr = audit._create_pull_request_with_fallback(
+            "owner",
+            "repo",
+            ["app-token", "github-token"],
+            {"title": "Title", "head": "audit-branch", "base": "main"},
+        )
+
+        self.assertEqual(pr["html_url"], "https://github.com/owner/repo/pull/1")
+        self.assertEqual([call.args[1] for call in gh_post.call_args_list], ["app-token", "github-token"])
+
 
 class ReportTests(unittest.TestCase):
     def test_markdown_summary_contains_finding(self):
