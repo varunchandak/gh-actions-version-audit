@@ -14,6 +14,38 @@ Pinning to a **full-length commit SHA** (e.g. `@df4cb1c...`) is immutable — it
 
 This action helps you detect and remediate both problems: outdated pins and mutable tag references.
 
+## GitHub SHA Pinning Enforcement
+
+GitHub also provides a repository Actions setting named **Require actions to be pinned to a full-length commit SHA**. We validated this behavior in a test repository by running a workflow with a tagged action reference, enabling the setting, and running the same workflow again.
+
+Observations from the test:
+
+- Tagged action references such as `owner/action@v1` continue to run while `sha_pinning_required` is disabled.
+- After `sha_pinning_required` is enabled, workflows with tagged action references fail during job setup before any workflow steps run.
+- The failure message identifies the exact `uses:` reference that must be changed to a full-length commit SHA.
+- Existing workflow files are not automatically migrated by GitHub. Repositories need a separate audit or remediation process before enforcement is enabled broadly.
+
+Use this custom action when you need to:
+
+- Inventory mutable action references across repositories before enabling enforcement.
+- Keep SHA-pinned actions current with the latest released commit.
+- Send Slack notifications and job summaries without blocking development workflows.
+- Open reviewable pull requests that update workflow files to full-length commit SHAs.
+
+Use GitHub's SHA pinning enforcement setting when you need to:
+
+- Prevent new or existing workflows from running unless every external action is pinned to a full-length commit SHA.
+- Enforce the policy at runtime after repositories have been audited and remediated.
+- Add a hard guardrail for repositories that run sensitive workloads or have access to sensitive secrets.
+
+You can confirm the repository setting with:
+
+```bash
+gh api repos/OWNER/REPO/actions/permissions
+```
+
+The relevant response field is `sha_pinning_required`.
+
 ## Features
 
 - **Drift Detection:** Identifies when a pinned SHA is no longer the latest release.
@@ -29,23 +61,27 @@ This action helps you detect and remediate both problems: outdated pins and muta
 Create a workflow (e.g., `.github/workflows/audit.yml`) to run the audit on a schedule:
 
 ```yaml
-name: GitHub Actions Version Audit
+name: GitHub - GitHub Actions Version Audit
 on:
-  schedule:
-    - cron: '0 0 * * 1' # Every Monday at midnight
   workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 1'  # Monday 04:30 UTC (10:00 IST)
 
 permissions:
   contents: read
 
 jobs:
   audit:
+    name: Audit pinned GitHub Actions
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: varunchandak/gh-actions-version-audit@63bffd07c344e008a1030f01f0a176544b1525fe # v1
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: varunchandak/gh-actions-version-audit@beddb541ca0f0aea005e3553c7b5fd4e2884665c # v1.1.2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ github.token }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
@@ -68,21 +104,24 @@ If the action needs to fall back to `GITHUB_TOKEN` for PR creation, the target r
 Example using `actions/create-github-app-token`:
 
 ```yaml
-name: GitHub Actions Version Audit
+name: GitHub - GitHub Actions Version Audit
 on:
-  schedule:
-    - cron: '0 0 * * 1'
   workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 1'  # Monday 04:30 UTC (10:00 IST)
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write       # needed to push the bump branch
+  pull-requests: write  # needed to open the PR
 
 jobs:
   audit:
+    name: Audit pinned GitHub Actions
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Generate GitHub App token
         id: app-token
@@ -93,29 +132,28 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
 
-      - uses: varunchandak/gh-actions-version-audit@63bffd07c344e008a1030f01f0a176544b1525fe # v1
+      - uses: varunchandak/gh-actions-version-audit@beddb541ca0f0aea005e3553c7b5fd4e2884665c # v1.1.2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           create_pr: 'true'
-          git_push_token: ${{ steps.app-token.outputs.token }}
           pr_branch: github-actions-version-audit
-          pr_base: main
+          pr_base: ${{ github.event.repository.default_branch }}
 ```
 
-The audit token (`github_token`) is used for release lookups and as a fallback for PR creation. The push token (`git_push_token`) is used for the commit that updates workflow files and is tried first for PR lookup and creation.
+The push token (`git_push_token`) is used for the commit that updates workflow files and is tried first for PR lookup and creation. `github_token` is used for release lookups and as a fallback when `git_push_token` is not provided. If you are using the same app token for all operations (as shown above), omit `git_push_token` - the code falls back to `github_token` automatically. Passing the same value to both inputs is redundant. Use a GitHub App token as `github_token` when auditing internal repositories so release metadata is visible across the app installation.
 
 ## Inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
-| `github_token` | Required. Used to query public release metadata. | `${{ github.token }}` |
-| `slack_webhook_url` | Optional. Slack incoming webhook URL. If omitted, results are printed to logs. | — |
+| `github_token` | Token used to query release metadata and as a fallback for push and PR creation when `git_push_token` is not set. Defaults to `GITHUB_TOKEN`. | `${{ github.token }}` |
+| `slack_webhook_url` | Optional. Slack incoming webhook URL. If omitted, results are printed to logs. | None |
 | `workflows_dir` | Optional. The directory to scan for workflow files. | `.github/workflows` |
 | `skip_prefixes` | Optional. Comma-separated prefixes to ignore (e.g., `./` for local actions). | `./` |
-| `create_pr` | Optional. Set to `true` to patch findings and open a pull request. | `false` |
-| `git_push_token` | Optional unless `create_pr` is enabled. GitHub App or PAT token used to commit workflow file updates and attempted first for PR creation. | — |
+| `create_pr` | Optional. Set to `true` to patch findings and open a pull request. Also accepts `1`, `yes`, `on`. | `false` |
+| `git_push_token` | Optional. GitHub App or PAT token with `contents:write` and `workflows` permission, used to commit workflow file updates and tried first for PR lookup and creation. If omitted or identical to `github_token`, `github_token` is used for all operations. | None |
 | `pr_branch` | Optional. Branch to create or update for automated PRs. | `github-actions-version-audit` |
-| `pr_base` | Optional. Base branch for automated PRs. | `main` |
+| `pr_base` | Optional. Base branch for automated PRs. Defaults to `main` - recommend passing `${{ github.event.repository.default_branch }}` to avoid hardcoding the branch name. | `main` |
 
 ## License
 MIT

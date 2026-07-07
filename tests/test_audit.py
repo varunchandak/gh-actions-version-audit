@@ -162,6 +162,9 @@ class PullRequestTests(unittest.TestCase):
         self.assertEqual(gh_patch.call_count, 0)
         self.assertEqual([call.args[1] for call in gh_get.call_args_list], ["app-token"] * 3)
         self.assertEqual([call.args[1] for call in gh_post.call_args_list], ["app-token"] * 3)
+        pr_body = gh_post.call_args_list[2].args[2]
+        self.assertEqual(pr_body["title"], "Bump pinned GitHub Actions to latest SHAs")
+        self.assertIn("This PR was opened by GitHub Actions Version Audit.", pr_body["body"])
 
     @mock.patch.object(audit, "gh_post")
     @mock.patch.object(audit, "gh_get")
