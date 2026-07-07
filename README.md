@@ -79,7 +79,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: varunchandak/gh-actions-version-audit@beddb541ca0f0aea005e3553c7b5fd4e2884665c # v1.1.2
+      - uses: varunchandak/gh-actions-version-audit@1cee9be87f96b42df9610496072af2f1b787e2b8 # v1.1.4
         with:
           github_token: ${{ github.token }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -89,13 +89,15 @@ jobs:
 
 PR creation is disabled by default. Enable it when you want the action to patch workflow files from findings and open a reviewable PR.
 
-Because these changes modify files under `.github/workflows`, the token that commits the branch must have permission to edit workflow files. The default `GITHUB_TOKEN` is usually not enough for that write path. Use a GitHub App installation token or a fine-grained PAT with:
+Because this action usually changes files under `.github/workflows`, the token that commits the PR branch must have permission to edit workflow files. This applies even though the action opens a PR instead of committing directly to the default branch. GitHub validates workflow-file writes at commit time for any branch.
+
+The default `GITHUB_TOKEN` is usually not enough for that write path. If PR creation fails with `Resource not accessible by integration`, use a GitHub App installation token or a fine-grained PAT with:
 
 - `contents: write`
-- `workflows: write`
 - `pull-requests: write`
+- `workflows: write`
 
-If the action needs to fall back to `GITHUB_TOKEN` for PR creation, the target repository must allow workflows to create pull requests:
+If the action uses `GITHUB_TOKEN` for PR creation, the target repository must also allow workflows to create pull requests:
 
 1. Go to **Settings** → **Actions** → **General**.
 2. Under **Workflow permissions**, choose **Read and write permissions**.
@@ -132,7 +134,7 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
 
-      - uses: varunchandak/gh-actions-version-audit@beddb541ca0f0aea005e3553c7b5fd4e2884665c # v1.1.2
+      - uses: varunchandak/gh-actions-version-audit@1cee9be87f96b42df9610496072af2f1b787e2b8 # v1.1.4
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           create_pr: 'true'
