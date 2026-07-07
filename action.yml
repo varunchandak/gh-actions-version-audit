@@ -33,7 +33,7 @@ inputs:
     required: false
     default: 'github-actions-version-audit'
   pr_base:
-    description: 'Base branch for pull requests when create_pr is true. Defaults to main; pass ${{ github.event.repository.default_branch }} to avoid hardcoding.'
+    description: 'Base branch for pull requests when create_pr is true. Defaults to main; pass the repository default branch expression from the caller workflow to avoid hardcoding.'
     required: false
     default: 'main'
 
