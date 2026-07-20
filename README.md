@@ -1,5 +1,7 @@
 # GitHub Actions Version Audit
 
+Find outdated GitHub Actions, mutable action tags, and CI/CD supply-chain drift before they become production risk.
+
 This action scans your repository's workflows for `uses:` references, checks the GitHub API for each action's latest release, and reports version drift or insecure tag pinning (e.g., pinning to `v1` instead of a commit SHA).
 
 ## Why Pin to a Commit SHA?
@@ -56,32 +58,39 @@ The relevant response field is `sha_pinning_required`.
 - **Optional Pull Requests:** Can patch stale or mutable `uses:` references to the latest release SHA and open a PR.
 - **Zero Dependencies:** Runs on standard runners without needing additional setup.
 
+## Audit Outdated GitHub Actions
+
+Use this action as a lightweight GitHub Actions version checker for repositories that want Dependabot-style visibility plus SHA pinning awareness. It is designed for CI/CD security reviews, workflow maintenance, and supply-chain hardening.
+
 ## Usage
 
-Create a workflow (e.g., `.github/workflows/audit.yml`) to run the audit on a schedule:
+Create a workflow (e.g., `.github/workflows/audit.yml`) to run the audit on a schedule.
+
+The GitHub Marketplace **Use latest version** button may only show the single action step. Use the full workflow below so the repository is checked out before the audit runs.
 
 ```yaml
-name: GitHub - GitHub Actions Version Audit
+name: GitHub Actions Version Audit
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 4 * * 1'  # Monday 04:30 UTC (10:00 IST)
+    - cron: '30 4 * * 1'
 
 permissions:
   contents: read
 
 jobs:
   audit:
-    name: Audit pinned GitHub Actions
+    name: Audit GitHub Actions versions
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: varunchandak/gh-actions-version-audit@1cee9be87f96b42df9610496072af2f1b787e2b8 # v1.1.4
+      - name: Audit outdated GitHub Actions
+        uses: varunchandak/gh-actions-version-audit@8a2dca88bbf1403716ee520acaec80573e49a20c # v1.1.6
         with:
-          github_token: ${{ github.token }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
@@ -106,11 +115,12 @@ If the action uses `GITHUB_TOKEN` for PR creation, the target repository must al
 Example using `actions/create-github-app-token`:
 
 ```yaml
-name: GitHub - GitHub Actions Version Audit
+name: GitHub Actions Version Audit
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 4 * * 1'  # Monday 04:30 UTC (10:00 IST)
+    - cron: '30 4 * * 1'
 
 permissions:
   contents: write       # needed to push the bump branch
@@ -118,7 +128,7 @@ permissions:
 
 jobs:
   audit:
-    name: Audit pinned GitHub Actions
+    name: Audit GitHub Actions versions
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -134,7 +144,8 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
 
-      - uses: varunchandak/gh-actions-version-audit@1cee9be87f96b42df9610496072af2f1b787e2b8 # v1.1.4
+      - name: Audit outdated GitHub Actions
+        uses: varunchandak/gh-actions-version-audit@8a2dca88bbf1403716ee520acaec80573e49a20c # v1.1.6
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           create_pr: 'true'

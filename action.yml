@@ -1,5 +1,5 @@
 name: 'GitHub Actions Version Audit'
-description: 'Audit GitHub Actions references for version drift and insecure tag pinning.'
+description: 'Audit outdated GitHub Actions versions, mutable tags, and CI/CD supply-chain drift.'
 author: 'Varun Chandak'
 branding:
   icon: 'shield'
@@ -7,8 +7,8 @@ branding:
 
 inputs:
   github_token:
-    description: 'GitHub Token used to query public release metadata.'
-    required: true
+    description: 'GitHub token used to query release metadata. Defaults to the workflow GITHUB_TOKEN.'
+    required: false
     default: ${{ github.token }}
   slack_webhook_url:
     description: 'Slack incoming webhook URL for notifications.'
