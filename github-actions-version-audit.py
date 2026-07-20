@@ -126,8 +126,8 @@ def resolve_tag_sha(owner_repo: str, tag: str, token: str) -> str | None:
     return None
 
 
-def scan_workflows(workflows_dir: Path, skip_prefixes: tuple[str, ...]) -> dict[str, list[tuple[Path, str, str | None]]]:
-    occurrences: dict[str, list[tuple[Path, str, str | None]]] = defaultdict(list)
+def scan_workflows(workflows_dir: Path, skip_prefixes: tuple[str, ...]) -> dict[str, list[tuple[Path, str, str, str | None]]]:
+    occurrences: dict[str, list[tuple[Path, str, str, str | None]]] = defaultdict(list)
     for path in sorted([*workflows_dir.rglob("*.yml"), *workflows_dir.rglob("*.yaml")]):
         try:
             content = path.read_text()
@@ -141,7 +141,7 @@ def scan_workflows(workflows_dir: Path, skip_prefixes: tuple[str, ...]) -> dict[
             if any(full.startswith(p) for p in skip_prefixes):
                 continue
             owner_repo = "/".join(full.split("/")[:2])
-            occurrences[owner_repo].append((path, m.group("ref"), m.group("comment")))
+            occurrences[owner_repo].append((path, full, m.group("ref"), m.group("comment")))
     return occurrences
 
 
@@ -352,10 +352,15 @@ def build_slack_payload(findings: list[dict], repo: str, run_url: str | None, pr
         {"type": "divider"},
     ]
     for f in findings:
+        use_lines = "\n".join(
+            f"• Use: `{format_uses_line(f, action_ref)}`"
+            for action_ref in f.get("action_refs", [f["action"]])
+        )
         bullet = (
             f"*`{f['action']}`*\n"
             f"• Pinned: `{f['current_display']}`\n"
-            f"• Latest: `{f['latest_tag']}` (`{f['latest_sha'][:7]}`)\n"
+            f"• Latest: `{f['latest_tag']}` (`{f['latest_sha']}`)\n"
+            f"{use_lines}\n"
             f"• Files affected: {f['files_count']}"
         )
         if f["tag_pinned_count"]:
@@ -375,6 +380,19 @@ def build_slack_payload(findings: list[dict], repo: str, run_url: str | None, pr
     }
 
 
+def format_uses_line(finding: dict, action_ref: str | None = None) -> str:
+    action = action_ref or finding["action"]
+    return f"uses: {action}@{finding['latest_sha']} # {finding['latest_tag']}"
+
+
+def build_copy_paste_updates(findings: list[dict]) -> str:
+    lines = ["Copy-paste updates:", ""]
+    for f in findings:
+        for action_ref in f.get("action_refs", [f["action"]]):
+            lines.append(f"- {format_uses_line(f, action_ref)}")
+    return "\n".join(lines)
+
+
 def build_markdown_summary(findings: list[dict], repo: str) -> str:
     lines = [
         "## GitHub Actions Version Audit",
@@ -386,9 +404,24 @@ def build_markdown_summary(findings: list[dict], repo: str) -> str:
     for f in findings:
         notes = ":warning: Tag pin found" if f["tag_pinned_count"] else ""
         lines.append(
-            f"| `{f['action']}` | `{f['current_display']}` | `{f['latest_tag']}` (`{f['latest_sha'][:7]}`) | {f['files_count']} | {notes} |"
+            f"| `{f['action']}` | `{f['current_display']}` | `{f['latest_tag']}` (`{f['latest_sha']}`) | {f['files_count']} | {notes} |"
         )
-    lines.extend(["", f"*Audit run: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*"])
+    lines.extend(
+        [
+            "",
+            "### Copy-paste updates",
+            "",
+            "```yaml",
+            *[
+                f"- {format_uses_line(f, action_ref)}"
+                for f in findings
+                for action_ref in f.get("action_refs", [f["action"]])
+            ],
+            "```",
+            "",
+            f"*Audit run: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -445,8 +478,8 @@ def main() -> int:
             print(f"[warn] {owner_repo}: could not resolve {latest_tag} to a commit")
             continue
 
-        sha_refs = [ref for _, ref, _ in items if SHA_RE.match(ref)]
-        tag_refs = [ref for _, ref, _ in items if not SHA_RE.match(ref)]
+        sha_refs = [ref for _, _, ref, _ in items if SHA_RE.match(ref)]
+        tag_refs = [ref for _, _, ref, _ in items if not SHA_RE.match(ref)]
         sha_out_of_date = any(ref != latest_sha for ref in sha_refs)
         has_tag_pins = bool(tag_refs)
 
@@ -454,7 +487,7 @@ def main() -> int:
             print(f"[ok]   {owner_repo}: pinned to latest {latest_tag} ({latest_sha[:7]})")
             continue
 
-        current_comment = next((c for _, _, c in items if c), None)
+        current_comment = next((c for _, _, _, c in items if c), None)
         if current_comment:
             current_display = current_comment
         elif sha_refs:
@@ -462,22 +495,23 @@ def main() -> int:
         else:
             current_display = tag_refs[0]
 
-        affected_paths = list({path for path, _, _ in items})
+        affected_paths = list({path for path, _, _, _ in items})
         findings.append(
             {
                 "action": owner_repo,
+                "action_refs": sorted({full for _, full, _, _ in items}),
                 "current_display": current_display,
                 "latest_tag": latest_tag,
                 "latest_sha": latest_sha,
                 "files_count": len(affected_paths),
-                "tag_pinned_count": len({path for path, ref, _ in items if not SHA_RE.match(ref)}),
+                "tag_pinned_count": len({path for path, _, ref, _ in items if not SHA_RE.match(ref)}),
                 "items": items,
             }
         )
         print(f"[drift] {owner_repo}: {current_display} -> {latest_tag} ({latest_sha[:7]})")
 
         # GitHub Actions Annotations
-        for path, ref, _ in items:
+        for path, _, ref, _ in items:
             msg = f"{owner_repo} is out of date ({current_display} -> {latest_tag})"
             if not SHA_RE.match(ref):
                 msg = f"{owner_repo} pins a mutable tag '{ref}' instead of a SHA. Latest: {latest_tag}"
@@ -496,6 +530,9 @@ def main() -> int:
     if summary_file:
         with open(summary_file, "a") as f:
             f.write(build_markdown_summary(findings, repo))
+
+    print("")
+    print(build_copy_paste_updates(findings))
 
     pr_url: str | None = None
     pr_error: str | None = None

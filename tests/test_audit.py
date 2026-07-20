@@ -28,8 +28,8 @@ steps:
             occurrences = audit.scan_workflows(workflows, ("./",))
 
         self.assertEqual(set(occurrences), {"actions/checkout", "docker/setup-buildx-action"})
-        self.assertEqual(occurrences["actions/checkout"][0][1:], ("abc123", "v4"))
-        self.assertEqual(occurrences["docker/setup-buildx-action"][0][1], "v3")
+        self.assertEqual(occurrences["actions/checkout"][0][1:], ("actions/checkout", "abc123", "v4"))
+        self.assertEqual(occurrences["docker/setup-buildx-action"][0][2], "v3")
 
     def test_scans_yml_and_yaml_recursively(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -56,8 +56,18 @@ steps:
 
             occurrences = audit.scan_workflows(workflows, ())
 
-        self.assertEqual(occurrences["actions/checkout"][0][1:], ("v4", "v4"))
-        self.assertEqual(occurrences["actions/setup-python"][0][1], "v5")
+        self.assertEqual(occurrences["actions/checkout"][0][1:], ("actions/checkout", "v4", "v4"))
+        self.assertEqual(occurrences["actions/setup-python"][0][2], "v5")
+
+    def test_preserves_action_subpaths_for_reporting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflows = Path(temp_dir)
+            (workflows / "codeql.yml").write_text("- uses: github/codeql-action/init@v4\n")
+
+            occurrences = audit.scan_workflows(workflows, ())
+
+        self.assertEqual(set(occurrences), {"github/codeql-action"})
+        self.assertEqual(occurrences["github/codeql-action"][0][1], "github/codeql-action/init")
 
     def test_does_not_scan_mismatched_quotes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -205,6 +215,26 @@ class PullRequestTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    def test_copy_paste_updates_use_full_sha(self):
+        findings = [
+            {
+                "action": "actions/checkout",
+                "current_display": "v4",
+                "latest_tag": "v6.0.3",
+                "latest_sha": "a" * 40,
+                "files_count": 2,
+                "tag_pinned_count": 1,
+                "action_refs": ["github/codeql-action/init"],
+            }
+        ]
+
+        updates = audit.build_copy_paste_updates(findings)
+
+        self.assertIn(
+            f"- uses: github/codeql-action/init@{'a' * 40} # v6.0.3",
+            updates,
+        )
+
     def test_markdown_summary_contains_finding(self):
         findings = [
             {
@@ -222,6 +252,24 @@ class ReportTests(unittest.TestCase):
         self.assertIn("`actions/checkout`", summary)
         self.assertIn("Tag pin found", summary)
         self.assertIn("owner/repo", summary)
+        self.assertIn(f"- uses: actions/checkout@{'a' * 40} # v6.0.3", summary)
+
+    def test_slack_payload_contains_copy_paste_update(self):
+        findings = [
+            {
+                "action": "actions/checkout",
+                "current_display": "v4",
+                "latest_tag": "v6.0.3",
+                "latest_sha": "a" * 40,
+                "files_count": 2,
+                "tag_pinned_count": 1,
+            }
+        ]
+
+        payload = audit.build_slack_payload(findings, "owner/repo", None)
+
+        section = payload["blocks"][3]["text"]["text"]
+        self.assertIn(f"uses: actions/checkout@{'a' * 40} # v6.0.3", section)
 
 
 if __name__ == "__main__":
