@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Audit outdated GitHub Actions
-        uses: varunchandak/gh-actions-version-audit@8a2dca88bbf1403716ee520acaec80573e49a20c # v1.1.6
+        uses: varunchandak/gh-actions-version-audit@3fc4f4c93cf4079cbcc071ca3c2c9849c5e8b508 # v1.1.7
         with:
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
@@ -145,7 +145,7 @@ jobs:
           repositories: ${{ github.event.repository.name }}
 
       - name: Audit outdated GitHub Actions
-        uses: varunchandak/gh-actions-version-audit@8a2dca88bbf1403716ee520acaec80573e49a20c # v1.1.6
+        uses: varunchandak/gh-actions-version-audit@3fc4f4c93cf4079cbcc071ca3c2c9849c5e8b508 # v1.1.7
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           create_pr: 'true'
